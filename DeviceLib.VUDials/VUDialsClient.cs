@@ -5,6 +5,7 @@ using System.IO.Ports;
 using System.Text;
 
 // ステータスコードレスポンス。
+// ReSharper disable IdentifierTypo
 #pragma warning disable CA1027
 public enum VUDialsStatus
 {
@@ -31,6 +32,7 @@ public enum VUDialsStatus
     SpiError = 0x16
 }
 #pragma warning restore CA1027
+// ReSharper restore IdentifierTypo
 
 // イージング設定（ダイヤル/バックライトのステップ・周期）。
 public sealed record EasingConfig(uint DialStep, uint DialPeriod, uint BacklightStep, uint BacklightPeriod);
@@ -42,6 +44,7 @@ public sealed record DialInfo(byte Index, string UidHex);
 // 物理層: 115200 8N1、行終端 "\r\n"、ASCII Hex。
 // パケット: '>' CMD(2hex) TYPE(2hex) LEN(4hex) DATA(2hex × LEN) "\r\n"
 // レスポンス: '<' で始まり以下同形式。
+#pragma warning disable CA1003
 public sealed class VUDialsClient : IDisposable
 {
     // ====================================================================
@@ -49,6 +52,8 @@ public sealed class VUDialsClient : IDisposable
     // ====================================================================
 
     // VU1 シリアルプロトコルのコマンドID。
+    // ReSharper disable IdentifierTypo
+#pragma warning disable IDE0051
     private static class Commands
     {
         public const byte SetDialRawSingle = 0x01;
@@ -76,6 +81,8 @@ public sealed class VUDialsClient : IDisposable
         public const byte GetHwInfo = 0x21;
         public const byte GetProtocolInfo = 0x22;
     }
+#pragma warning disable IDE0051
+    // ReSharper restore IdentifierTypo
 
     // パケットの DataType フィールドの値。
     private enum DataType : byte
@@ -140,9 +147,6 @@ public sealed class VUDialsClient : IDisposable
     // 受信時に呼ばれるイベント（RX 1 行分、CRLF 含まず）。
     public event Action<string>? OnReceive;
 
-    // 一般ログイベント。
-    public event Action<string>? OnLog;
-
     // 接続中のポート名。
     public string PortName => port.PortName;
 
@@ -172,7 +176,6 @@ public sealed class VUDialsClient : IDisposable
         port.Open();
         port.DiscardInBuffer();
         port.DiscardOutBuffer();
-        OnLog?.Invoke($"Opened {port.PortName} @115200 8N1");
     }
 
     // ポートを閉じる。
@@ -181,7 +184,6 @@ public sealed class VUDialsClient : IDisposable
         if (port.IsOpen)
         {
             port.Close();
-            OnLog?.Invoke($"Closed {port.PortName}");
         }
     }
 
@@ -365,7 +367,7 @@ public sealed class VUDialsClient : IDisposable
             {
                 return -1;
             }
-            OnLog?.Invoke($"provision round {i + 1}: online={online}");
+
             if (online == prev)
             {
                 break;
@@ -566,3 +568,4 @@ public sealed class VUDialsClient : IDisposable
         return ExpectOk(resp, out status);
     }
 }
+#pragma warning restore CA1003
