@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.IO.Ports;
 using System.Text;
+
 using DeviceLib.VUDials;
 
 // VUDials 動作確認サンプル。
@@ -20,8 +22,8 @@ if (args.Length < 1)
 }
 
 var portName = args[0];
-var dialId = args.Length > 1 ? byte.Parse(args[1]) : (byte)0;
-var percent = args.Length > 2 ? byte.Parse(args[2]) : (byte)50;
+var dialId = args.Length > 1 ? byte.Parse(args[1], CultureInfo.InvariantCulture) : (byte)0;
+var percent = args.Length > 2 ? byte.Parse(args[2], CultureInfo.InvariantCulture) : (byte)50;
 
 using var client = new VUDialsClient(portName);
 client.OnTransmit += s => Console.WriteLine($"TX: {s}");

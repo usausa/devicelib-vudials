@@ -4,6 +4,120 @@ using System.Globalization;
 using System.IO.Ports;
 using System.Text;
 
+// VU1 シリアルプロトコルのコマンドID。
+public static class VUDialsCommands
+{
+    public const byte SetDialRawSingle = 0x01;
+    public const byte SetDialRawMultiple = 0x02;
+    public const byte SetDialPercSingle = 0x03;
+    public const byte SetDialPercMultiple = 0x04;
+    public const byte SetDialCalibrateMax = 0x05;
+    public const byte SetDialCalibrateHalf = 0x06;
+    public const byte GetDevicesMap = 0x07;
+    public const byte ProvisionDevice = 0x08;
+    public const byte ResetAllDevices = 0x09;
+    public const byte DialPower = 0x0A;
+    public const byte GetDeviceUid = 0x0B;
+    public const byte RescanBus = 0x0C;
+    public const byte DisplayClear = 0x0D;
+    public const byte ResetCfg = 0x12;
+    public const byte SetRgbBacklight = 0x13;
+    public const byte SetDialEasingStep = 0x14;
+    public const byte SetDialEasingPeriod = 0x15;
+    public const byte SetBacklightEasingStep = 0x16;
+    public const byte SetBacklightEasingPeriod = 0x17;
+    public const byte GetEasingConfig = 0x18;
+    public const byte GetBuildInfo = 0x19;
+    public const byte GetFwInfo = 0x20;
+    public const byte GetHwInfo = 0x21;
+    public const byte GetProtocolInfo = 0x22;
+}
+
+// パケットの DataType フィールドの値。
+#pragma warning disable CA1008
+#pragma warning disable CA1028
+public enum VUDialsDataType : byte
+{
+    None = 0x01,
+    SingleValue = 0x02,
+    MultipleValue = 0x03,
+    KeyValuePair = 0x04,
+    StatusCode = 0x05
+}
+#pragma warning restore CA1028
+#pragma warning restore CA1008
+
+// ステータスコードレスポンス。
+public enum VUDialsStatus
+{
+    Ok = 0x00,
+    Fail = 0x01,
+    Busy = 0x02,
+    Timeout = 0x03,
+    BadData = 0x04,
+    ProtocolError = 0x05,
+    NoMemory = 0x06,
+    InvalidArgument = 0x07,
+    BadAddress = 0x08,
+    Forbidden = 0x09,
+    AlreadyExists = 0x0B,
+    Unsupported = 0x0C,
+    NotImplemented = 0x0D,
+    MalformedPackage = 0x0E,
+    RecursiveCall = 0x10,
+    DataMismatch = 0x11,
+    DeviceOffline = 0x12,
+    ModuleNotInit = 0x13,
+    I2CError = 0x14,
+    UsartError = 0x15,
+    SpiError = 0x16
+}
+
+// 受信パケット 1 件を表す。
+public sealed record VUDialsResponse(VUDialsDataType DataType, string HexPayload)
+{
+    // HexPayload を byte 配列に変換する。
+    public byte[] PayloadBytes => HexToBytes(HexPayload);
+
+    // DataType=StatusCode のとき、ステータスコードを取り出す。
+    public bool TryGetStatus(out VUDialsStatus status)
+    {
+        status = VUDialsStatus.Ok;
+        if (DataType != VUDialsDataType.StatusCode || string.IsNullOrEmpty(HexPayload))
+        {
+            return false;
+        }
+        var v = int.Parse(HexPayload, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        status = (VUDialsStatus)v;
+        return true;
+    }
+
+    // Hex 文字列を byte 配列に変換する。
+    public static byte[] HexToBytes(string hex)
+    {
+        if (string.IsNullOrEmpty(hex))
+        {
+            return [];
+        }
+        if (hex.Length % 2 != 0)
+        {
+            throw new FormatException($"Hex string length must be even: '{hex}'");
+        }
+        var bytes = new byte[hex.Length / 2];
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        }
+        return bytes;
+    }
+}
+
+// イージング設定（ダイヤル/バックライトのステップ・周期）。
+public sealed record EasingConfig(uint DialStep, uint DialPeriod, uint BacklightStep, uint BacklightPeriod);
+
+// 列挙されたダイヤル 1 基分の情報。
+public sealed record DialInfo(byte Index, string UidHex);
+
 // VU1 GaugeHub シリアルプロトコル v1 クライアント。
 // 物理層: 115200 8N1、行終端 "\r\n"、ASCII Hex。
 // パケット: '>' CMD(2hex) TYPE(2hex) LEN(4hex) DATA(2hex × LEN) "\r\n"
@@ -41,7 +155,7 @@ public sealed class VUDialsClient : IDisposable
             NewLine = "\r\n",
             Encoding = Encoding.ASCII,
             DtrEnable = true,
-            RtsEnable = true,
+            RtsEnable = true
         };
     }
 
@@ -71,14 +185,8 @@ public sealed class VUDialsClient : IDisposable
             return;
         }
         disposed = true;
-        try
-        {
-            Close();
-        }
-        catch
-        {
-            // ignore
-        }
+
+        Close();
         port.Dispose();
     }
 
@@ -144,11 +252,9 @@ public sealed class VUDialsClient : IDisposable
         {
             return null;
         }
-        var cmd = byte.Parse(line.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         var dataType = byte.Parse(line.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        var dataLen = ushort.Parse(line.AsSpan(5, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         var payload = line.Length > 9 ? line[9..] : string.Empty;
-        return new VUDialsResponse(cmd, (VUDialsDataType)dataType, dataLen, payload);
+        return new VUDialsResponse((VUDialsDataType)dataType, payload);
     }
 
     private void ThrowIfClosed()
@@ -159,7 +265,7 @@ public sealed class VUDialsClient : IDisposable
         }
     }
 
-    private bool ExpectOk(VUDialsResponse? resp, out VUDialsStatus status)
+    private static bool ExpectOk(VUDialsResponse? resp, out VUDialsStatus status)
     {
         if (resp is null)
         {
@@ -309,7 +415,7 @@ public sealed class VUDialsClient : IDisposable
             (byte)((value >> 24) & 0xFF),
             (byte)((value >> 16) & 0xFF),
             (byte)((value >> 8) & 0xFF),
-            (byte)(value & 0xFF),
+            (byte)(value & 0xFF)
         ];
         var resp = SendCommand(cmd, VUDialsDataType.KeyValuePair, data);
         return ExpectOk(resp, out status);
@@ -339,7 +445,7 @@ public sealed class VUDialsClient : IDisposable
             (byte)((value >> 24) & 0xFF),
             (byte)((value >> 16) & 0xFF),
             (byte)((value >> 8) & 0xFF),
-            (byte)(value & 0xFF),
+            (byte)(value & 0xFF)
         ];
         return SendCommand(cmd, VUDialsDataType.SingleValue, data);
     }
