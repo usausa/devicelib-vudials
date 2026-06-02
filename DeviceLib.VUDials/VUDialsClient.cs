@@ -111,9 +111,6 @@ public sealed class VUDialsClient : IDisposable
     // 受信時に呼ばれるイベント（RX 1 行分、CRLF 含まず）。
     public event Action<string>? OnReceive;
 
-    // 一般ログイベント。
-    public event Action<string>? OnLog;
-
     // 接続中のポート名。
     public string PortName => port.PortName;
 
@@ -143,7 +140,6 @@ public sealed class VUDialsClient : IDisposable
         port.Open();
         port.DiscardInBuffer();
         port.DiscardOutBuffer();
-        OnLog?.Invoke($"Opened {port.PortName} @115200 8N1");
     }
 
     // ポートを閉じる。
@@ -152,7 +148,6 @@ public sealed class VUDialsClient : IDisposable
         if (port.IsOpen)
         {
             port.Close();
-            OnLog?.Invoke($"Closed {port.PortName}");
         }
     }
 
@@ -364,12 +359,13 @@ public sealed class VUDialsClient : IDisposable
             {
                 return -1;
             }
+
             var online = CountOnline();
             if (online < 0)
             {
                 return -1;
             }
-            OnLog?.Invoke($"provision round {i + 1}: online={online}");
+
             if (online == prev)
             {
                 break;
