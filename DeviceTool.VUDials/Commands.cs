@@ -76,9 +76,16 @@ public sealed class ListPortsCommand : ICommandHandler
     {
         var ports = SerialPort.GetPortNames();
         if (ports.Length == 0)
+        {
             Console.WriteLine("No serial ports found.");
+        }
         else
-            foreach (var p in ports) Console.WriteLine(p);
+        {
+            foreach (var p in ports)
+            {
+                Console.WriteLine(p);
+            }
+        }
         return ValueTask.CompletedTask;
     }
 }
@@ -153,7 +160,9 @@ public sealed class ListDialsCommand : ICommandHandler
             Console.WriteLine($"{"Index",-8} {"UID",-32}");
             Console.WriteLine(new string('-', 42));
             foreach (var d in dials)
+            {
                 Console.WriteLine($"{d.Index,-8} {d.UidHex,-32}");
+            }
         }
         return ValueTask.CompletedTask;
     }
@@ -231,24 +240,25 @@ public sealed class SetMultipleCommand : ICommandHandler
     [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
     public bool Verbose { get; set; }
 
-    public ValueTask ExecuteAsync(CommandContext context)
+    public async ValueTask ExecuteAsync(CommandContext context)
     {
         var pairs = new List<(byte, byte)>();
         foreach (var part in Values.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split('=');
             if (kv.Length == 2 && byte.TryParse(kv[0].Trim(), out var id) && byte.TryParse(kv[1].Trim(), out var pct))
+            {
                 pairs.Add((id, pct));
+            }
         }
         if (pairs.Count == 0)
         {
-            Console.Error.WriteLine("Invalid values format. Expected: 0=50,1=75");
-            return ValueTask.CompletedTask;
+            await Console.Error.WriteLineAsync("Invalid values format. Expected: 0=50,1=75");
+            return;
         }
         using var client = PortHelper.Open(Port, Verbose);
         var ok = client.SetMultipleDialsPercent(pairs, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
-        return ValueTask.CompletedTask;
     }
 }
 
@@ -305,13 +315,13 @@ public sealed class GetEasingCommand : ICommandHandler
     [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
     public bool Verbose { get; set; }
 
-    public ValueTask ExecuteAsync(CommandContext context)
+    public async ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port, Verbose);
         var cfg = client.GetEasingConfig(DialId);
         if (cfg is null)
         {
-            Console.Error.WriteLine("Failed to get easing config.");
+            await Console.Error.WriteLineAsync("Failed to get easing config.");
         }
         else
         {
@@ -320,7 +330,6 @@ public sealed class GetEasingCommand : ICommandHandler
             Console.WriteLine($"BacklightStep   : {cfg.BacklightStep}");
             Console.WriteLine($"BacklightPeriod : {cfg.BacklightPeriod}");
         }
-        return ValueTask.CompletedTask;
     }
 }
 
@@ -614,7 +623,7 @@ public sealed class SweepCommand : ICommandHandler
     [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
     public bool Verbose { get; set; }
 
-    public ValueTask ExecuteAsync(CommandContext context)
+    public async ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port, Verbose);
         for (var loop = 0; loop < Loops; loop++)
@@ -623,16 +632,15 @@ public sealed class SweepCommand : ICommandHandler
             {
                 client.SetDialPercent(DialId, (byte)v, out _);
                 Console.Write($"\r{v,3}%");
-                Thread.Sleep(DelayMs);
+                await Task.Delay(DelayMs);
             }
             for (var v = 100; v >= 0; v -= 5)
             {
                 client.SetDialPercent(DialId, (byte)v, out _);
                 Console.Write($"\r{v,3}%");
-                Thread.Sleep(DelayMs);
+                await Task.Delay(DelayMs);
             }
         }
         Console.WriteLine("\nDone.");
-        return ValueTask.CompletedTask;
     }
 }

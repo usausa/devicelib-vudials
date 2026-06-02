@@ -1,8 +1,6 @@
 namespace DeviceLib.VUDials;
 
-/// <summary>
-/// VU1 シリアルプロトコルのコマンドID。
-/// </summary>
+// VU1 シリアルプロトコルのコマンドID。
 public static class VUDialsCommands
 {
     public const byte SetDialRawSingle = 0x01;
@@ -31,9 +29,7 @@ public static class VUDialsCommands
     public const byte GetProtocolInfo = 0x22;
 }
 
-/// <summary>
-/// パケットの DataType フィールドの値。
-/// </summary>
+// パケットの DataType フィールドの値。
 public enum VUDialsDataType : byte
 {
     None = 0x01,
@@ -43,9 +39,7 @@ public enum VUDialsDataType : byte
     StatusCode = 0x05,
 }
 
-/// <summary>
-/// ステータスコードレスポンス。
-/// </summary>
+// ステータスコードレスポンス。
 public enum VUDialsStatus
 {
     Ok = 0x00,

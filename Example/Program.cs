@@ -12,7 +12,10 @@ if (args.Length < 1)
     Console.WriteLine("Usage: Example <PORT> [dialId=0] [percent=50]");
     Console.WriteLine("例: Example COM5 0 75\n");
     Console.WriteLine("利用可能な COM ポート:");
-    foreach (var p in SerialPort.GetPortNames()) Console.WriteLine("  " + p);
+    foreach (var p in SerialPort.GetPortNames())
+    {
+        Console.WriteLine("  " + p);
+    }
     return 1;
 }
 
@@ -35,7 +38,9 @@ try
 
     Console.WriteLine("\n=== 2) ダイヤル一覧 ===");
     foreach (var d in client.ListDials())
+    {
         Console.WriteLine($"  Dial #{d.Index}  UID={d.UidHex}");
+    }
 
     Console.WriteLine($"\n=== 3) ダイヤル {dialId} を {percent}% に設定 ===");
     if (!client.SetDialPercent(dialId, percent, out var st))
@@ -62,8 +67,16 @@ try
     }
 
     Console.WriteLine("\n=== 6) スイープ (0→100→0) ===");
-    for (var v = 0; v <= 100; v += 10) { client.SetDialPercent(dialId, (byte)v, out _); Thread.Sleep(150); }
-    for (var v = 100; v >= 0; v -= 10) { client.SetDialPercent(dialId, (byte)v, out _); Thread.Sleep(150); }
+    for (var v = 0; v <= 100; v += 10)
+    {
+        client.SetDialPercent(dialId, (byte)v, out _);
+        Thread.Sleep(150);
+    }
+    for (var v = 100; v >= 0; v -= 10)
+    {
+        client.SetDialPercent(dialId, (byte)v, out _);
+        Thread.Sleep(150);
+    }
 
     Console.WriteLine("\n=== 7) バックライト: レッド → オフ ===");
     client.SetBacklight(dialId, 100, 0, 0, 0, out _);
