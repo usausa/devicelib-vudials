@@ -81,7 +81,7 @@ public sealed class VUDialsClient : IDisposable
         public const byte GetHwInfo = 0x21;
         public const byte GetProtocolInfo = 0x22;
     }
-#pragma warning disable IDE0051
+#pragma warning restore IDE0051
     // ReSharper restore IdentifierTypo
 
     // パケットの DataType フィールドの値。
@@ -92,42 +92,6 @@ public sealed class VUDialsClient : IDisposable
         MultipleValue = 0x03,
         KeyValuePair = 0x04,
         StatusCode = 0x05
-    }
-
-    // 受信パケット 1 件を表す。
-    private sealed record Response(DataType Type, string HexPayload)
-    {
-        public byte[] PayloadBytes => HexToBytes(HexPayload);
-
-        public bool TryGetStatus(out VUDialsStatus status)
-        {
-            status = VUDialsStatus.Ok;
-            if (Type != DataType.StatusCode || string.IsNullOrEmpty(HexPayload))
-            {
-                return false;
-            }
-            var v = int.Parse(HexPayload, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-            status = (VUDialsStatus)v;
-            return true;
-        }
-
-        public static byte[] HexToBytes(string hex)
-        {
-            if (string.IsNullOrEmpty(hex))
-            {
-                return [];
-            }
-            if (hex.Length % 2 != 0)
-            {
-                throw new FormatException($"Hex string length must be even: '{hex}'");
-            }
-            var bytes = new byte[hex.Length / 2];
-            for (var i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-            }
-            return bytes;
-        }
     }
 
     // ====================================================================
@@ -146,6 +110,9 @@ public sealed class VUDialsClient : IDisposable
 
     // 受信時に呼ばれるイベント（RX 1 行分、CRLF 含まず）。
     public event Action<string>? OnReceive;
+
+    // 一般ログイベント。
+    public event Action<string>? OnLog;
 
     // 接続中のポート名。
     public string PortName => port.PortName;
@@ -176,6 +143,7 @@ public sealed class VUDialsClient : IDisposable
         port.Open();
         port.DiscardInBuffer();
         port.DiscardOutBuffer();
+        OnLog?.Invoke($"Opened {port.PortName} @115200 8N1");
     }
 
     // ポートを閉じる。
@@ -184,6 +152,7 @@ public sealed class VUDialsClient : IDisposable
         if (port.IsOpen)
         {
             port.Close();
+            OnLog?.Invoke($"Closed {port.PortName}");
         }
     }
 
@@ -202,7 +171,7 @@ public sealed class VUDialsClient : IDisposable
     //  低レベル: パケット送受信
     // ====================================================================
 
-    private Response? SendCommand(byte cmd, DataType dataType, params byte[] data)
+    private (DataType Type, string Payload)? SendCommand(byte cmd, DataType dataType, params byte[] data)
     {
         ThrowIfClosed();
 
@@ -251,7 +220,7 @@ public sealed class VUDialsClient : IDisposable
         }
     }
 
-    private static Response? ParseResponse(string line)
+    private static (DataType Type, string Payload)? ParseResponse(string line)
     {
         if (string.IsNullOrEmpty(line) || line.Length < 9 || line[0] != '<')
         {
@@ -259,7 +228,25 @@ public sealed class VUDialsClient : IDisposable
         }
         var dataType = byte.Parse(line.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         var payload = line.Length > 9 ? line[9..] : string.Empty;
-        return new Response((DataType)dataType, payload);
+        return ((DataType)dataType, payload);
+    }
+
+    private static byte[] HexToBytes(string hex)
+    {
+        if (string.IsNullOrEmpty(hex))
+        {
+            return [];
+        }
+        if (hex.Length % 2 != 0)
+        {
+            throw new FormatException($"Hex string length must be even: '{hex}'");
+        }
+        var bytes = new byte[hex.Length / 2];
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        }
+        return bytes;
     }
 
     private void ThrowIfClosed()
@@ -270,19 +257,34 @@ public sealed class VUDialsClient : IDisposable
         }
     }
 
-    private static bool ExpectOk(Response? resp, out VUDialsStatus status)
+    private static bool ExpectOk((DataType Type, string Payload)? resp, out VUDialsStatus status)
     {
         if (resp is null)
         {
             status = VUDialsStatus.Timeout;
             return false;
         }
-        if (!resp.TryGetStatus(out status))
+        if (resp.Value.Type != DataType.StatusCode || string.IsNullOrEmpty(resp.Value.Payload))
         {
             status = VUDialsStatus.Ok;
             return true;
         }
+        var v = int.Parse(resp.Value.Payload, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        status = (VUDialsStatus)v;
         return status == VUDialsStatus.Ok;
+    }
+
+    private (DataType Type, string Payload)? SendUint32(byte cmd, byte dialId, uint value)
+    {
+        byte[] data =
+        [
+            dialId,
+            (byte)((value >> 24) & 0xFF),
+            (byte)((value >> 16) & 0xFF),
+            (byte)((value >> 8) & 0xFF),
+            (byte)(value & 0xFF)
+        ];
+        return SendCommand(cmd, DataType.SingleValue, data);
     }
 
     // ====================================================================
@@ -309,13 +311,13 @@ public sealed class VUDialsClient : IDisposable
     }
 
     // 複数のダイヤルにパーセンテージを一括設定する。
-    public bool SetMultipleDialsPercent(IReadOnlyList<(byte dialId, byte percent)> values, out VUDialsStatus status)
+    public bool SetMultipleDialsPercent(IReadOnlyList<(byte DialId, byte Percent)> values, out VUDialsStatus status)
     {
         var data = new byte[values.Count * 2];
         for (var i = 0; i < values.Count; i++)
         {
-            data[i * 2] = values[i].dialId;
-            data[(i * 2) + 1] = Math.Min(values[i].percent, (byte)100);
+            data[i * 2] = values[i].DialId;
+            data[(i * 2) + 1] = Math.Min(values[i].Percent, (byte)100);
         }
         var r = SendCommand(Commands.SetDialPercMultiple, DataType.KeyValuePair, data);
         return ExpectOk(r, out status);
@@ -367,7 +369,7 @@ public sealed class VUDialsClient : IDisposable
             {
                 return -1;
             }
-
+            OnLog?.Invoke($"provision round {i + 1}: online={online}");
             if (online == prev)
             {
                 break;
@@ -442,19 +444,6 @@ public sealed class VUDialsClient : IDisposable
     public bool SetBacklightEasingPeriod(byte dialId, uint periodMs, out VUDialsStatus status) =>
         ExpectOk(SendUint32(Commands.SetBacklightEasingPeriod, dialId, periodMs), out status);
 
-    private Response? SendUint32(byte cmd, byte dialId, uint value)
-    {
-        byte[] data =
-        [
-            dialId,
-            (byte)((value >> 24) & 0xFF),
-            (byte)((value >> 16) & 0xFF),
-            (byte)((value >> 8) & 0xFF),
-            (byte)(value & 0xFF)
-        ];
-        return SendCommand(cmd, DataType.SingleValue, data);
-    }
-
     // ====================================================================
     //  高レベル: 取得系
     // ====================================================================
@@ -463,53 +452,53 @@ public sealed class VUDialsClient : IDisposable
     public byte[]? GetDevicesMap()
     {
         var r = SendCommand(Commands.GetDevicesMap, DataType.None);
-        return r?.PayloadBytes;
+        return r.HasValue ? HexToBytes(r.Value.Payload) : null;
     }
 
     // 指定ダイヤルの UID を取得する（生 HEX 文字列）。
     public string? GetDeviceUid(byte dialId)
     {
         var r = SendCommand(Commands.GetDeviceUid, DataType.SingleValue, dialId);
-        return r?.HexPayload;
+        return r?.Payload;
     }
 
     // 指定ダイヤルのファームウェアバージョンを取得する（HEX 文字列）。
     public string? GetFirmwareVersion(byte dialId)
     {
         var r = SendCommand(Commands.GetFwInfo, DataType.SingleValue, dialId);
-        return r?.HexPayload;
+        return r?.Payload;
     }
 
     // 指定ダイヤルのハードウェアバージョンを取得する（HEX 文字列）。
     public string? GetHardwareVersion(byte dialId)
     {
         var r = SendCommand(Commands.GetHwInfo, DataType.SingleValue, dialId);
-        return r?.HexPayload;
+        return r?.Payload;
     }
 
     // 指定ダイヤルのプロトコルバージョンを取得する（HEX 文字列）。
     public string? GetProtocolVersion(byte dialId)
     {
         var r = SendCommand(Commands.GetProtocolInfo, DataType.SingleValue, dialId);
-        return r?.HexPayload;
+        return r?.Payload;
     }
 
     // 指定ダイヤルのビルドハッシュを取得する（HEX 文字列）。
     public string? GetBuildInfo(byte dialId)
     {
         var r = SendCommand(Commands.GetBuildInfo, DataType.SingleValue, dialId);
-        return r?.HexPayload;
+        return r?.Payload;
     }
 
     // イージング設定を取得する（uint32 × 4 個の BE 配列）。
     public EasingConfig? GetEasingConfig(byte dialId)
     {
         var r = SendCommand(Commands.GetEasingConfig, DataType.SingleValue, dialId);
-        if (r is null)
+        if (!r.HasValue)
         {
             return null;
         }
-        var b = r.PayloadBytes;
+        var b = HexToBytes(r.Value.Payload);
         if (b.Length < 16)
         {
             return null;

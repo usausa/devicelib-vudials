@@ -58,7 +58,6 @@ internal static class PortHelper
         {
             client.OnTransmit += s => Console.WriteLine($"TX: {s}");
             client.OnReceive += s => Console.WriteLine($"RX: {s}");
-            client.OnLog += s => Console.WriteLine($"-- {s}");
         }
         client.Open();
         return client;
