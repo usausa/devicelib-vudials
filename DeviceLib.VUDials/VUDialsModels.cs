@@ -1,6 +1,6 @@
-using System.Globalization;
-
 namespace DeviceLib.VUDials;
+
+using System.Globalization;
 
 /// <summary>
 /// 受信パケット 1 件を表す。

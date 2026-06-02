@@ -1,8 +1,8 @@
+namespace DeviceLib.VUDials;
+
 using System.Globalization;
 using System.IO.Ports;
 using System.Text;
-
-namespace DeviceLib.VUDials;
 
 /// <summary>
 /// VU1 GaugeHub シリアルプロトコル v1 クライアント。
@@ -122,10 +122,10 @@ public sealed class VUDialsClient : IDisposable
     {
         if (string.IsNullOrEmpty(line) || line.Length < 9 || line[0] != '<')
             return null;
-        var cmd      = byte.Parse(line.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        var cmd = byte.Parse(line.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         var dataType = byte.Parse(line.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        var dataLen  = ushort.Parse(line.AsSpan(5, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        var payload  = line.Length > 9 ? line[9..] : string.Empty;
+        var dataLen = ushort.Parse(line.AsSpan(5, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        var payload = line.Length > 9 ? line[9..] : string.Empty;
         return new VUDialsResponse(cmd, (VUDialsDataType)dataType, dataLen, payload);
     }
 
@@ -176,7 +176,7 @@ public sealed class VUDialsClient : IDisposable
         var data = new byte[values.Count * 2];
         for (var i = 0; i < values.Count; i++)
         {
-            data[i * 2]     = values[i].dialId;
+            data[i * 2] = values[i].dialId;
             data[i * 2 + 1] = Math.Min(values[i].percent, (byte)100);
         }
         var r = SendCommand(VUDialsCommands.SetDialPercMultiple, VUDialsDataType.KeyValuePair, data);
@@ -265,7 +265,7 @@ public sealed class VUDialsClient : IDisposable
             dialId,
             (byte)((value >> 24) & 0xFF),
             (byte)((value >> 16) & 0xFF),
-            (byte)((value >> 8)  & 0xFF),
+            (byte)((value >> 8) & 0xFF),
             (byte)(value & 0xFF),
         ];
         var resp = SendCommand(cmd, VUDialsDataType.KeyValuePair, data);
@@ -295,7 +295,7 @@ public sealed class VUDialsClient : IDisposable
             dialId,
             (byte)((value >> 24) & 0xFF),
             (byte)((value >> 16) & 0xFF),
-            (byte)((value >> 8)  & 0xFF),
+            (byte)((value >> 8) & 0xFF),
             (byte)(value & 0xFF),
         ];
         return SendCommand(cmd, VUDialsDataType.SingleValue, data);

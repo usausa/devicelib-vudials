@@ -17,13 +17,13 @@ if (args.Length < 1)
 }
 
 var portName = args[0];
-var dialId   = args.Length > 1 ? byte.Parse(args[1]) : (byte)0;
-var percent  = args.Length > 2 ? byte.Parse(args[2]) : (byte)50;
+var dialId = args.Length > 1 ? byte.Parse(args[1]) : (byte)0;
+var percent = args.Length > 2 ? byte.Parse(args[2]) : (byte)50;
 
 using var client = new VUDialsClient(portName);
 client.OnTransmit += s => Console.WriteLine($"TX: {s}");
-client.OnReceive  += s => Console.WriteLine($"RX: {s}");
-client.OnLog      += s => Console.WriteLine($"-- {s}");
+client.OnReceive += s => Console.WriteLine($"RX: {s}");
+client.OnLog += s => Console.WriteLine($"-- {s}");
 
 try
 {
