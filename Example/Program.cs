@@ -26,9 +26,6 @@ var dialId = args.Length > 1 ? byte.Parse(args[1], CultureInfo.InvariantCulture)
 var percent = args.Length > 2 ? byte.Parse(args[2], CultureInfo.InvariantCulture) : (byte)50;
 
 using var client = new VUDialsClient(portName);
-client.OnTransmit += s => Console.WriteLine($"TX: {s}");
-client.OnReceive += s => Console.WriteLine($"RX: {s}");
-
 client.Open();
 
 Console.WriteLine("\n=== 1) Provision + Rescan (全 dial を検出) ===");

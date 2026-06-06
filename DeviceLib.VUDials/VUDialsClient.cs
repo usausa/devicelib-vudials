@@ -4,7 +4,10 @@ using System.Globalization;
 using System.IO.Ports;
 using System.Text;
 
-// ステータスコードレスポンス。
+//--------------------------------------------------------------------------------
+// Status
+//--------------------------------------------------------------------------------
+
 // ReSharper disable IdentifierTypo
 #pragma warning disable CA1027
 public enum VUDialsStatus
@@ -34,24 +37,33 @@ public enum VUDialsStatus
 #pragma warning restore CA1027
 // ReSharper restore IdentifierTypo
 
-// イージング設定（ダイヤル/バックライトのステップ・周期）。
-public sealed record EasingConfig(uint DialStep, uint DialPeriod, uint BacklightStep, uint BacklightPeriod);
+//--------------------------------------------------------------------------------
+// Data
+//--------------------------------------------------------------------------------
 
-// 列挙されたダイヤル 1 基分の情報。
-public sealed record DialInfo(byte Index, string UidHex);
+public sealed record EasingConfig(
+    uint DialStep,
+    uint DialPeriod,
+    uint BacklightStep,
+    uint BacklightPeriod);
 
-// VU1 GaugeHub シリアルプロトコル v1 クライアント。
-// 物理層: 115200 8N1、行終端 "\r\n"、ASCII Hex。
-// パケット: '>' CMD(2hex) TYPE(2hex) LEN(4hex) DATA(2hex × LEN) "\r\n"
-// レスポンス: '<' で始まり以下同形式。
-#pragma warning disable CA1003
+public sealed record DialInfo(
+    byte Index,
+    string UidHex);
+
+//--------------------------------------------------------------------------------
+// Client
+//--------------------------------------------------------------------------------
+
+// Request: '>' CMD(2hex) TYPE(2hex) LEN(4hex) DATA(2hex × LEN) "\r\n"
+// Response: '<'
 public sealed class VUDialsClient : IDisposable
 {
-    // ====================================================================
+    //--------------------------------------------------------------------------------
     //  内部型定義
-    // ====================================================================
+    //--------------------------------------------------------------------------------
 
-    // VU1 シリアルプロトコルのコマンドID。
+    // VU1 CommandId。
     // ReSharper disable IdentifierTypo
 #pragma warning disable IDE0051
     private static class Commands
@@ -84,7 +96,6 @@ public sealed class VUDialsClient : IDisposable
 #pragma warning restore IDE0051
     // ReSharper restore IdentifierTypo
 
-    // パケットの DataType フィールドの値。
     private enum DataType : byte
     {
         None = 0x01,
@@ -94,32 +105,26 @@ public sealed class VUDialsClient : IDisposable
         StatusCode = 0x05
     }
 
-    // ====================================================================
-    //  フィールド・プロパティ
-    // ====================================================================
+    //--------------------------------------------------------------------------------
+    // Fields
+    //--------------------------------------------------------------------------------
 
     private readonly SerialPort port;
-    private readonly Lock txLock = new();
     private bool disposed;
 
-    // 応答待ちタイムアウト (ms)。
-    public int ResponseTimeoutMs { get; set; } = 10_000;
+    //--------------------------------------------------------------------------------
+    // Property
+    //--------------------------------------------------------------------------------
 
-    // 送信時に呼ばれるイベント（TX パケット文字列、CRLF 含まず）。
-    public event Action<string>? OnTransmit;
+    public int ResponseTimeout { get; set; } = 10_000;
 
-    // 受信時に呼ばれるイベント（RX 1 行分、CRLF 含まず）。
-    public event Action<string>? OnReceive;
-
-    // 接続中のポート名。
     public string PortName => port.PortName;
 
-    // ポートが開いているかどうか。
     public bool IsOpen => port.IsOpen;
 
-    // ====================================================================
-    //  ライフサイクル
-    // ====================================================================
+    //--------------------------------------------------------------------------------
+    // Constructor
+    //--------------------------------------------------------------------------------
 
     public VUDialsClient(string portName)
     {
@@ -134,7 +139,23 @@ public sealed class VUDialsClient : IDisposable
         };
     }
 
-    // ポートを開く。
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        Close();
+
+        port.Dispose();
+    }
+
+    //--------------------------------------------------------------------------------
+    // Open / Close
+    //--------------------------------------------------------------------------------
+
     public void Open()
     {
         port.Open();
@@ -142,7 +163,6 @@ public sealed class VUDialsClient : IDisposable
         port.DiscardOutBuffer();
     }
 
-    // ポートを閉じる。
     public void Close()
     {
         if (port.IsOpen)
@@ -151,25 +171,12 @@ public sealed class VUDialsClient : IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
-        disposed = true;
-        Close();
-        port.Dispose();
-    }
-
-    // ====================================================================
-    //  低レベル: パケット送受信
-    // ====================================================================
+    //--------------------------------------------------------------------------------
+    // Low-level: Packet I/O
+    //--------------------------------------------------------------------------------
 
     private (DataType Type, string Payload)? SendCommand(byte cmd, DataType dataType, params byte[] data)
     {
-        ThrowIfClosed();
-
         var sb = new StringBuilder(9 + (data.Length * 2));
         sb.Append('>');
         sb.Append(cmd.ToString("X2", CultureInfo.InvariantCulture));
@@ -181,38 +188,33 @@ public sealed class VUDialsClient : IDisposable
         }
         var line = sb.ToString();
 
-        lock (txLock)
+        port.DiscardInBuffer();
+        port.Write(line + "\r\n");
+
+        var deadline = DateTime.UtcNow.AddMilliseconds(ResponseTimeout);
+        while (DateTime.UtcNow < deadline)
         {
-            OnTransmit?.Invoke(line);
-            port.DiscardInBuffer();
-            port.Write(line + "\r\n");
-
-            var deadline = DateTime.UtcNow.AddMilliseconds(ResponseTimeoutMs);
-            while (DateTime.UtcNow < deadline)
+            string rx;
+            try
             {
-                string rx;
-                try
-                {
-                    rx = port.ReadLine();
-                }
-                catch (TimeoutException)
-                {
-                    continue;
-                }
-
-                if (string.IsNullOrEmpty(rx))
-                {
-                    continue;
-                }
-                OnReceive?.Invoke(rx);
-
-                if (rx.StartsWith('<'))
-                {
-                    return ParseResponse(rx);
-                }
+                rx = port.ReadLine();
             }
-            return null;
+            catch (TimeoutException)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(rx))
+            {
+                continue;
+            }
+
+            if (rx.StartsWith('<'))
+            {
+                return ParseResponse(rx);
+            }
         }
+        return null;
     }
 
     private static (DataType Type, string Payload)? ParseResponse(string line)
@@ -236,20 +238,13 @@ public sealed class VUDialsClient : IDisposable
         {
             throw new FormatException($"Hex string length must be even: '{hex}'");
         }
+
         var bytes = new byte[hex.Length / 2];
         for (var i = 0; i < bytes.Length; i++)
         {
             bytes[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         }
         return bytes;
-    }
-
-    private void ThrowIfClosed()
-    {
-        if (!port.IsOpen)
-        {
-            throw new InvalidOperationException("Serial port is not open. Call Open() first.");
-        }
     }
 
     private static bool ExpectOk((DataType Type, string Payload)? resp, out VUDialsStatus status)
@@ -282,11 +277,10 @@ public sealed class VUDialsClient : IDisposable
         return SendCommand(cmd, DataType.SingleValue, data);
     }
 
-    // ====================================================================
-    //  高レベル: 針（ダイヤル）制御
-    // ====================================================================
+    //--------------------------------------------------------------------------------
+    // High-level: Dial Control
+    //--------------------------------------------------------------------------------
 
-    // 針の位置をパーセンテージ (0-100) で設定する。
     public bool SetDialPercent(byte dialId, byte percent, out VUDialsStatus status)
     {
         if (percent > 100)
@@ -297,7 +291,6 @@ public sealed class VUDialsClient : IDisposable
         return ExpectOk(r, out status);
     }
 
-    // 針の位置を raw 値 (0-65535) で設定する。
     public bool SetDialRaw(byte dialId, ushort raw, out VUDialsStatus status)
     {
         byte[] data = [dialId, (byte)(raw >> 8), (byte)(raw & 0xFF)];
@@ -305,7 +298,6 @@ public sealed class VUDialsClient : IDisposable
         return ExpectOk(r, out status);
     }
 
-    // 複数のダイヤルにパーセンテージを一括設定する。
     public bool SetMultipleDialsPercent(IReadOnlyList<(byte DialId, byte Percent)> values, out VUDialsStatus status)
     {
         var data = new byte[values.Count * 2];
@@ -314,41 +306,35 @@ public sealed class VUDialsClient : IDisposable
             data[i * 2] = values[i].DialId;
             data[(i * 2) + 1] = Math.Min(values[i].Percent, (byte)100);
         }
+
         var r = SendCommand(Commands.SetDialPercMultiple, DataType.KeyValuePair, data);
         return ExpectOk(r, out status);
     }
 
-    // RGBW バックライトを設定する。
     public bool SetBacklight(byte dialId, byte r, byte g, byte b, byte w, out VUDialsStatus status)
     {
         var resp = SendCommand(Commands.SetRgbBacklight, DataType.MultipleValue, dialId, r, g, b, w);
         return ExpectOk(resp, out status);
     }
 
-    // ダイヤルの電源 ON/OFF を設定する。
     public bool SetDialPower(bool on, out VUDialsStatus status)
     {
         var resp = SendCommand(Commands.DialPower, DataType.SingleValue, (byte)(on ? 1 : 0));
         return ExpectOk(resp, out status);
     }
 
-    // I2C バスを再スキャンする。
     public bool RescanBus(out VUDialsStatus status)
     {
         var resp = SendCommand(Commands.RescanBus, DataType.None);
         return ExpectOk(resp, out status);
     }
 
-    // バス上に dial を 1 台登録する。
     public bool ProvisionDevice(out VUDialsStatus status)
     {
         var resp = SendCommand(Commands.ProvisionDevice, DataType.None);
         return ExpectOk(resp, out status);
     }
 
-    // Provision ループ + RescanBus でチェーン上の全 dial を確実に認識させる。
-    // maxRounds: provision ループの最大回数。
-    // 戻り値: 最終的に認識されているオンライン dial 数。失敗時は -1。
     public int ProvisionAndRescan(int maxRounds = 16)
     {
         var prev = -1;
@@ -394,21 +380,18 @@ public sealed class VUDialsClient : IDisposable
         return n;
     }
 
-    // 全デバイスをリセットする。
     public bool ResetAllDevices(out VUDialsStatus status)
     {
         var resp = SendCommand(Commands.ResetAllDevices, DataType.None);
         return ExpectOk(resp, out status);
     }
 
-    // 設定をデフォルトに戻す。
     public bool ResetConfig(out VUDialsStatus status)
     {
         var resp = SendCommand(Commands.ResetCfg, DataType.None);
         return ExpectOk(resp, out status);
     }
 
-    // キャリブレーションを実行する。fullScale=true → MAX、false → HALF。
     public bool CalibrateDial(byte dialId, uint value, bool fullScale, out VUDialsStatus status)
     {
         var cmd = fullScale ? Commands.SetDialCalibrateMax : Commands.SetDialCalibrateHalf;
@@ -424,69 +407,58 @@ public sealed class VUDialsClient : IDisposable
         return ExpectOk(resp, out status);
     }
 
-    // ダイヤル動作のイージング・ステップを設定する。
     public bool SetDialEasingStep(byte dialId, uint step, out VUDialsStatus status) =>
         ExpectOk(SendUint32(Commands.SetDialEasingStep, dialId, step), out status);
 
-    // ダイヤル動作のイージング・周期 (ms) を設定する。
     public bool SetDialEasingPeriod(byte dialId, uint periodMs, out VUDialsStatus status) =>
         ExpectOk(SendUint32(Commands.SetDialEasingPeriod, dialId, periodMs), out status);
 
-    // バックライト動作のイージング・ステップを設定する。
     public bool SetBacklightEasingStep(byte dialId, uint step, out VUDialsStatus status) =>
         ExpectOk(SendUint32(Commands.SetBacklightEasingStep, dialId, step), out status);
 
-    // バックライト動作のイージング・周期 (ms) を設定する。
     public bool SetBacklightEasingPeriod(byte dialId, uint periodMs, out VUDialsStatus status) =>
         ExpectOk(SendUint32(Commands.SetBacklightEasingPeriod, dialId, periodMs), out status);
 
-    // ====================================================================
-    //  高レベル: 取得系
-    // ====================================================================
+    //--------------------------------------------------------------------------------
+    // High-level: Device Info
+    //--------------------------------------------------------------------------------
 
-    // バス上のオンライン ダイヤルマップを取得する（生 payload の byte 配列）。
     public byte[]? GetDevicesMap()
     {
         var r = SendCommand(Commands.GetDevicesMap, DataType.None);
         return r.HasValue ? HexToBytes(r.Value.Payload) : null;
     }
 
-    // 指定ダイヤルの UID を取得する（生 HEX 文字列）。
     public string? GetDeviceUid(byte dialId)
     {
         var r = SendCommand(Commands.GetDeviceUid, DataType.SingleValue, dialId);
         return r?.Payload;
     }
 
-    // 指定ダイヤルのファームウェアバージョンを取得する（HEX 文字列）。
     public string? GetFirmwareVersion(byte dialId)
     {
         var r = SendCommand(Commands.GetFwInfo, DataType.SingleValue, dialId);
         return r?.Payload;
     }
 
-    // 指定ダイヤルのハードウェアバージョンを取得する（HEX 文字列）。
     public string? GetHardwareVersion(byte dialId)
     {
         var r = SendCommand(Commands.GetHwInfo, DataType.SingleValue, dialId);
         return r?.Payload;
     }
 
-    // 指定ダイヤルのプロトコルバージョンを取得する（HEX 文字列）。
     public string? GetProtocolVersion(byte dialId)
     {
         var r = SendCommand(Commands.GetProtocolInfo, DataType.SingleValue, dialId);
         return r?.Payload;
     }
 
-    // 指定ダイヤルのビルドハッシュを取得する（HEX 文字列）。
     public string? GetBuildInfo(byte dialId)
     {
         var r = SendCommand(Commands.GetBuildInfo, DataType.SingleValue, dialId);
         return r?.Payload;
     }
 
-    // イージング設定を取得する（uint32 × 4 個の BE 配列）。
     public EasingConfig? GetEasingConfig(byte dialId)
     {
         var r = SendCommand(Commands.GetEasingConfig, DataType.SingleValue, dialId);
@@ -506,12 +478,11 @@ public sealed class VUDialsClient : IDisposable
             ReadUInt32Be(b, 12));
     }
 
+    // TODO Use BinaryPrimitives once available.
     private static uint ReadUInt32Be(byte[] b, int offset) =>
         ((uint)b[offset] << 24) | ((uint)b[offset + 1] << 16) |
         ((uint)b[offset + 2] << 8) | b[offset + 3];
 
-    // 接続中のダイヤル一覧を取得する（devices_map + uid）。
-    // dial ID は 0 始まり。
     public IReadOnlyList<DialInfo> ListDials()
     {
         var list = new List<DialInfo>();
@@ -523,7 +494,6 @@ public sealed class VUDialsClient : IDisposable
         return list;
     }
 
-    // 接続中の dial ID（0 始まり）のみを取得する。
     public IReadOnlyList<byte> GetOnlineDialIds()
     {
         var ids = new List<byte>();
@@ -542,7 +512,6 @@ public sealed class VUDialsClient : IDisposable
         return ids;
     }
 
-    // ディスプレイをクリアする。
     public bool DisplayClear(byte dialId, bool whiteBackground, out VUDialsStatus status)
     {
         var resp = SendCommand(

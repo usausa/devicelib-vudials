@@ -51,14 +51,9 @@ public static class CommandBuilderExtensions
 
 internal static class PortHelper
 {
-    public static VUDialsClient Open(string port, bool verbose = false)
+    public static VUDialsClient Open(string port)
     {
         var client = new VUDialsClient(port);
-        if (verbose)
-        {
-            client.OnTransmit += s => Console.WriteLine($"TX: {s}");
-            client.OnReceive += s => Console.WriteLine($"RX: {s}");
-        }
         client.Open();
         return client;
     }
@@ -99,12 +94,9 @@ public sealed class ProvisionCommand : ICommandHandler
     [Option<string>("--port", "-p", Description = "Serial port (e.g. COM5)", Required = true)]
     public string Port { get; set; } = default!;
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var n = client.ProvisionAndRescan();
         Console.WriteLine(n >= 0 ? $"Detected {n} dial(s)." : "Failed.");
         return ValueTask.CompletedTask;
@@ -121,12 +113,9 @@ public sealed class RescanCommand : ICommandHandler
     [Option<string>("--port", "-p", Description = "Serial port", Required = true)]
     public string Port { get; set; } = default!;
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.RescanBus(out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -143,12 +132,9 @@ public sealed class ListDialsCommand : ICommandHandler
     [Option<string>("--port", "-p", Description = "Serial port", Required = true)]
     public string Port { get; set; } = default!;
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var dials = client.ListDials();
         if (dials.Count == 0)
         {
@@ -183,12 +169,9 @@ public sealed class SetPercentCommand : ICommandHandler
     [Option<byte>("--value", "-val", Description = "Percentage (0-100)", Required = true)]
     public byte Value { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetDialPercent(DialId, Value, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -211,12 +194,9 @@ public sealed class SetRawCommand : ICommandHandler
     [Option<ushort>("--value", "-val", Description = "Raw value (0-65535)", Required = true)]
     public ushort Value { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetDialRaw(DialId, Value, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -236,9 +216,6 @@ public sealed class SetMultipleCommand : ICommandHandler
     [Option<string>("--values", "-val", Description = "Dial=percent pairs (e.g. 0=50,1=75)", Required = true)]
     public string Values { get; set; } = default!;
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public async ValueTask ExecuteAsync(CommandContext context)
     {
         var pairs = new List<(byte, byte)>();
@@ -255,7 +232,7 @@ public sealed class SetMultipleCommand : ICommandHandler
             await Console.Error.WriteLineAsync("Invalid values format. Expected: 0=50,1=75");
             return;
         }
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetMultipleDialsPercent(pairs, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
     }
@@ -286,12 +263,9 @@ public sealed class SetBacklightCommand : ICommandHandler
     [Option<byte>("--w", Description = "White (0-100)")]
     public byte W { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetBacklight(DialId, R, G, B, W, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -311,12 +285,9 @@ public sealed class GetEasingCommand : ICommandHandler
     [Option<byte>("--dial", "-d", Description = "Dial ID (0-based)", Required = true)]
     public byte DialId { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public async ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var cfg = client.GetEasingConfig(DialId);
         if (cfg is null)
         {
@@ -348,12 +319,9 @@ public sealed class SetDialEasingStepCommand : ICommandHandler
     [Option<uint>("--value", "-val", Description = "Step value", Required = true)]
     public uint Value { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetDialEasingStep(DialId, Value, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -376,12 +344,9 @@ public sealed class SetDialEasingPeriodCommand : ICommandHandler
     [Option<uint>("--value", "-val", Description = "Period in ms", Required = true)]
     public uint Value { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetDialEasingPeriod(DialId, Value, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -404,12 +369,9 @@ public sealed class SetBacklightEasingStepCommand : ICommandHandler
     [Option<uint>("--value", "-val", Description = "Step value", Required = true)]
     public uint Value { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetBacklightEasingStep(DialId, Value, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -432,12 +394,9 @@ public sealed class SetBacklightEasingPeriodCommand : ICommandHandler
     [Option<uint>("--value", "-val", Description = "Period in ms", Required = true)]
     public uint Value { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetBacklightEasingPeriod(DialId, Value, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -457,12 +416,9 @@ public sealed class DeviceInfoCommand : ICommandHandler
     [Option<byte>("--dial", "-d", Description = "Dial ID (0-based)", Required = true)]
     public byte DialId { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         Console.WriteLine($"UID      : {client.GetDeviceUid(DialId) ?? "(none)"}");
         Console.WriteLine($"Build    : {client.GetBuildInfo(DialId) ?? "(none)"}");
         Console.WriteLine($"Firmware : {client.GetFirmwareVersion(DialId) ?? "(none)"}");
@@ -485,12 +441,9 @@ public sealed class PowerCommand : ICommandHandler
     [Option<bool>("--on", Description = "Power on (default: off)")]
     public bool On { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.SetDialPower(On, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -507,12 +460,9 @@ public sealed class ResetDevicesCommand : ICommandHandler
     [Option<string>("--port", "-p", Description = "Serial port", Required = true)]
     public string Port { get; set; } = default!;
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.ResetAllDevices(out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -529,12 +479,9 @@ public sealed class ResetConfigCommand : ICommandHandler
     [Option<string>("--port", "-p", Description = "Serial port", Required = true)]
     public string Port { get; set; } = default!;
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.ResetConfig(out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -560,12 +507,9 @@ public sealed class CalibrateCommand : ICommandHandler
     [Option<bool>("--full", Description = "Full-scale calibration (default: half-scale)")]
     public bool Full { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.CalibrateDial(DialId, Value, Full, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -588,12 +532,9 @@ public sealed class DisplayClearCommand : ICommandHandler
     [Option<bool>("--white", Description = "Clear with white background")]
     public bool White { get; set; }
 
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
-
     public ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         var ok = client.DisplayClear(DialId, White, out var status);
         Console.WriteLine(ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
@@ -617,27 +558,24 @@ public sealed class SweepCommand : ICommandHandler
     public int Loops { get; set; } = 1;
 
     [Option<int>("--delay", Description = "Delay between steps in ms (default: 80)")]
-    public int DelayMs { get; set; } = 80;
-
-    [Option<bool>("--verbose", "-v", Description = "Show TX/RX")]
-    public bool Verbose { get; set; }
+    public int Delay { get; set; } = 80;
 
     public async ValueTask ExecuteAsync(CommandContext context)
     {
-        using var client = PortHelper.Open(Port, Verbose);
+        using var client = PortHelper.Open(Port);
         for (var loop = 0; loop < Loops; loop++)
         {
             for (var v = 0; v <= 100; v += 5)
             {
                 client.SetDialPercent(DialId, (byte)v, out _);
                 Console.Write($"\r{v,3}%");
-                await Task.Delay(DelayMs);
+                await Task.Delay(Delay);
             }
             for (var v = 100; v >= 0; v -= 5)
             {
                 client.SetDialPercent(DialId, (byte)v, out _);
                 Console.Write($"\r{v,3}%");
-                await Task.Delay(DelayMs);
+                await Task.Delay(Delay);
             }
         }
         Console.WriteLine("\nDone.");
