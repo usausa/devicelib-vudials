@@ -198,7 +198,7 @@ public sealed class VUDialsClient : IDisposable
     // Low-level: Packet I/O
     //--------------------------------------------------------------------------------
 
-    private bool TrySendCommand(byte command, DataType requestType, ReadOnlySpan<byte> requestData, out DataType responseType, out ReadOnlySpan<byte> responseData)
+    private bool RequestResponse(byte command, DataType requestType, ReadOnlySpan<byte> requestData, out DataType responseType, out ReadOnlySpan<byte> responseData)
     {
         // Request: '>' CMD(2hex) TYPE(2hex) LEN(4hex) DATA(2hex × LEN) "\r\n"
         // Response: '<' CMD(2hex) TYPE(2hex) LEN(4hex) DATA(2hex × LEN) "\r\n"
@@ -220,11 +220,12 @@ public sealed class VUDialsClient : IDisposable
         buffer[pos++] = (byte)'\r';
         buffer[pos++] = (byte)'\n';
 
+        // Write
         port.DiscardInBuffer();
         port.Write(buffer, 0, pos);
 
-        // Monotonic deadline; Stopwatch is immune to wall-clock adjustments.
-        var deadline = Stopwatch.GetTimestamp() + TimeoutToTicks(ResponseTimeout);
+        // Read
+        var deadline = Stopwatch.GetTimestamp() + (ResponseTimeout * Stopwatch.Frequency / 1000); // ms -> Stopwatch ticks
         while (Stopwatch.GetTimestamp() < deadline)
         {
             var length = ReadResponseLine(deadline);
@@ -255,9 +256,6 @@ public sealed class VUDialsClient : IDisposable
         return false;
     }
 
-    // Reads one CRLF-terminated line into readBuffer (terminator stripped) and
-    // returns its length, or -1 on timeout. Bytes are accumulated across per-byte
-    // read timeouts until the shared deadline expires.
     private int ReadResponseLine(long deadline)
     {
         var offset = 0;
@@ -289,58 +287,8 @@ public sealed class VUDialsClient : IDisposable
             EnsureReadCapacity(offset + 1);
             readBuffer[offset++] = (byte)value;
         }
+
         return -1;
-    }
-
-    // Converts a millisecond timeout into monotonic Stopwatch timestamp ticks.
-    private static long TimeoutToTicks(int milliseconds) =>
-        milliseconds * Stopwatch.Frequency / 1000;
-
-    // Sends a command and interprets the response as a status code.
-    // Value responses (no status code) and successful transfers map to Ok.
-    private VUDialsStatus SendCommand(byte cmd, DataType dataType, ReadOnlySpan<byte> data)
-    {
-        if (!TrySendCommand(cmd, dataType, data, out var responseType, out var hexPayload))
-        {
-            return VUDialsStatus.Timeout;
-        }
-
-        if (responseType != DataType.StatusCode || hexPayload.IsEmpty)
-        {
-            return VUDialsStatus.Ok;
-        }
-
-        return ParseStatus(hexPayload);
-    }
-
-    private VUDialsStatus SendUint32(byte cmd, DataType dataType, byte dialId, uint value)
-    {
-        Span<byte> data = stackalloc byte[5];
-        data[0] = dialId;
-        BinaryPrimitives.WriteUInt32BigEndian(data[1..], value);
-        return SendCommand(cmd, dataType, data);
-    }
-
-    private string? GetHexInfo(byte cmd, byte dialId)
-    {
-        Span<byte> data = [dialId];
-        if (!TrySendCommand(cmd, DataType.SingleValue, data, out _, out var hexPayload))
-        {
-            return null;
-        }
-        return hexPayload.IsEmpty ? string.Empty : Encoding.ASCII.GetString(hexPayload);
-    }
-
-    private static VUDialsStatus ParseStatus(ReadOnlySpan<byte> hexPayload)
-    {
-        Span<byte> raw = stackalloc byte[hexPayload.Length / 2];
-        var count = HexHelper.ReadHex(hexPayload, raw);
-        var value = 0;
-        for (var i = 0; i < count; i++)
-        {
-            value = (value << 8) | raw[i];
-        }
-        return (VUDialsStatus)value;
     }
 
     //--------------------------------------------------------------------------------
@@ -376,190 +324,52 @@ public sealed class VUDialsClient : IDisposable
     }
 
     //--------------------------------------------------------------------------------
-    // High-level: Dial Control
+    // Send command
     //--------------------------------------------------------------------------------
 
-    public VUDialsStatus SetDialPercent(byte dialId, byte percent)
+    private VUDialsStatus SendCommand(byte cmd, DataType dataType, ReadOnlySpan<byte> data)
     {
-        if (percent > 100)
+        if (!RequestResponse(cmd, dataType, data, out var responseType, out var hexPayload))
         {
-            percent = 100;
+            return VUDialsStatus.Timeout;
         }
-        Span<byte> data = [dialId, percent];
-        return SendCommand(Commands.SetDialPercSingle, DataType.KeyValuePair, data);
-    }
 
-    public VUDialsStatus SetDialRaw(byte dialId, ushort raw)
-    {
-        Span<byte> data = [dialId, (byte)(raw >> 8), (byte)(raw & 0xFF)];
-        return SendCommand(Commands.SetDialRawSingle, DataType.KeyValuePair, data);
-    }
-
-    public VUDialsStatus SetMultipleDialsPercent(IReadOnlyList<(byte DialId, byte Percent)> values)
-    {
-        var count = values.Count;
-        var length = count * 2;
-        byte[]? rented = null;
-        var data = length <= StackPayloadThreshold
-            ? stackalloc byte[length]
-            : (rented = ArrayPool<byte>.Shared.Rent(length)).AsSpan(0, length);
-        try
+        if (responseType != DataType.StatusCode || hexPayload.IsEmpty)
         {
-            for (var i = 0; i < count; i++)
-            {
-                data[i * 2] = values[i].DialId;
-                data[(i * 2) + 1] = Math.Min(values[i].Percent, (byte)100);
-            }
-
-            return SendCommand(Commands.SetDialPercMultiple, DataType.KeyValuePair, data);
+            return VUDialsStatus.Ok;
         }
-        finally
+
+        Span<byte> raw = stackalloc byte[hexPayload.Length / 2];
+        var count = HexHelper.ReadHex(hexPayload, raw);
+        var value = 0;
+        for (var i = 0; i < count; i++)
         {
-            if (rented is not null)
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
+            value = (value << 8) | raw[i];
         }
+        return (VUDialsStatus)value;
     }
 
-    public VUDialsStatus SetBacklight(byte dialId, byte r, byte g, byte b, byte w)
+    private VUDialsStatus SendUInt32(byte cmd, DataType dataType, byte dialId, uint value)
     {
-        Span<byte> data = [dialId, r, g, b, w];
-        return SendCommand(Commands.SetRgbBacklight, DataType.MultipleValue, data);
+        Span<byte> data = stackalloc byte[5];
+        data[0] = dialId;
+        BinaryPrimitives.WriteUInt32BigEndian(data[1..], value);
+        return SendCommand(cmd, dataType, data);
     }
 
-    public VUDialsStatus SetDialPower(bool on)
+    private string? SendQuery(byte cmd, byte dialId)
     {
-        Span<byte> data = [(byte)(on ? 1 : 0)];
-        return SendCommand(Commands.DialPower, DataType.SingleValue, data);
-    }
-
-    public VUDialsStatus RescanBus() =>
-        SendCommand(Commands.RescanBus, DataType.None, default);
-
-    public VUDialsStatus ProvisionDevice() =>
-        SendCommand(Commands.ProvisionDevice, DataType.None, default);
-
-    public int ProvisionAndRescan(int maxRounds = 16)
-    {
-        var prev = -1;
-        for (var i = 0; i < maxRounds; i++)
+        Span<byte> data = [dialId];
+        if (!RequestResponse(cmd, DataType.SingleValue, data, out _, out var hexPayload))
         {
-            if (!TrySendCommand(Commands.ProvisionDevice, DataType.None, default, out _, out _))
-            {
-                return -1;
-            }
-
-            var online = CountOnline();
-            if (online < 0)
-            {
-                return -1;
-            }
-
-            if (online == prev)
-            {
-                break;
-            }
-            prev = online;
+            return null;
         }
-        TrySendCommand(Commands.RescanBus, DataType.None, default, out _, out _);
-        return CountOnline();
+        return hexPayload.IsEmpty ? string.Empty : Encoding.ASCII.GetString(hexPayload);
     }
-
-    private int CountOnline()
-    {
-        var map = GetDevicesMap();
-        if (map is null)
-        {
-            return -1;
-        }
-        var n = 0;
-        foreach (var b in map)
-        {
-            if (b == 0x01)
-            {
-                n++;
-            }
-        }
-        return n;
-    }
-
-    public VUDialsStatus ResetAllDevices() =>
-        SendCommand(Commands.ResetAllDevices, DataType.None, default);
-
-    public VUDialsStatus ResetConfig() =>
-        SendCommand(Commands.ResetCfg, DataType.None, default);
-
-    public VUDialsStatus CalibrateDial(byte dialId, uint value, bool fullScale)
-    {
-        var cmd = fullScale ? Commands.SetDialCalibrateMax : Commands.SetDialCalibrateHalf;
-        return SendUint32(cmd, DataType.KeyValuePair, dialId, value);
-    }
-
-    public VUDialsStatus SetDialEasingStep(byte dialId, uint step) =>
-        SendUint32(Commands.SetDialEasingStep, DataType.SingleValue, dialId, step);
-
-    public VUDialsStatus SetDialEasingPeriod(byte dialId, uint periodMs) =>
-        SendUint32(Commands.SetDialEasingPeriod, DataType.SingleValue, dialId, periodMs);
-
-    public VUDialsStatus SetBacklightEasingStep(byte dialId, uint step) =>
-        SendUint32(Commands.SetBacklightEasingStep, DataType.SingleValue, dialId, step);
-
-    public VUDialsStatus SetBacklightEasingPeriod(byte dialId, uint periodMs) =>
-        SendUint32(Commands.SetBacklightEasingPeriod, DataType.SingleValue, dialId, periodMs);
 
     //--------------------------------------------------------------------------------
-    // High-level: Device Info
+    // List Dials
     //--------------------------------------------------------------------------------
-
-    public byte[]? GetDevicesMap()
-    {
-        if (!TrySendCommand(Commands.GetDevicesMap, DataType.None, default, out _, out var hexPayload))
-        {
-            return null;
-        }
-
-        var result = new byte[hexPayload.Length / 2];
-        HexHelper.ReadHex(hexPayload, result);
-        return result;
-    }
-
-    public string? GetDeviceUid(byte dialId) => GetHexInfo(Commands.GetDeviceUid, dialId);
-
-    public string? GetFirmwareVersion(byte dialId) => GetHexInfo(Commands.GetFwInfo, dialId);
-
-    public string? GetHardwareVersion(byte dialId) => GetHexInfo(Commands.GetHwInfo, dialId);
-
-    public string? GetProtocolVersion(byte dialId) => GetHexInfo(Commands.GetProtocolInfo, dialId);
-
-    public string? GetBuildInfo(byte dialId) => GetHexInfo(Commands.GetBuildInfo, dialId);
-
-    public EasingConfig? GetEasingConfig(byte dialId)
-    {
-        Span<byte> request = [dialId];
-        if (!TrySendCommand(Commands.GetEasingConfig, DataType.SingleValue, request, out _, out var hexPayload))
-        {
-            return null;
-        }
-
-        // 4 × uint32 big-endian => 16 bytes => 32 hex chars.
-        if (hexPayload.Length < 32)
-        {
-            return null;
-        }
-
-        Span<byte> b = stackalloc byte[16];
-        if (HexHelper.ReadHex(hexPayload[..32], b) < 16)
-        {
-            return null;
-        }
-
-        return new EasingConfig(
-            BinaryPrimitives.ReadUInt32BigEndian(b),
-            BinaryPrimitives.ReadUInt32BigEndian(b[4..]),
-            BinaryPrimitives.ReadUInt32BigEndian(b[8..]),
-            BinaryPrimitives.ReadUInt32BigEndian(b[12..]));
-    }
 
     public IReadOnlyList<DialInfo> ListDials()
     {
@@ -590,9 +400,231 @@ public sealed class VUDialsClient : IDisposable
         return ids;
     }
 
+    public byte[]? GetDevicesMap()
+    {
+        if (!RequestResponse(Commands.GetDevicesMap, DataType.None, default, out _, out var hexPayload))
+        {
+            return null;
+        }
+
+        var result = new byte[hexPayload.Length / 2];
+        HexHelper.ReadHex(hexPayload, result);
+        return result;
+    }
+
+    //--------------------------------------------------------------------------------
+    // Dial Information
+    //--------------------------------------------------------------------------------
+
+    public string? GetDeviceUid(byte dialId) => SendQuery(Commands.GetDeviceUid, dialId);
+
+    public string? GetFirmwareVersion(byte dialId) => SendQuery(Commands.GetFwInfo, dialId);
+
+    public string? GetHardwareVersion(byte dialId) => SendQuery(Commands.GetHwInfo, dialId);
+
+    public string? GetProtocolVersion(byte dialId) => SendQuery(Commands.GetProtocolInfo, dialId);
+
+    public string? GetBuildInfo(byte dialId) => SendQuery(Commands.GetBuildInfo, dialId);
+
+    //--------------------------------------------------------------------------------
+    // Set Value
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus SetDialPercent(byte dialId, byte value)
+    {
+        if (value > 100)
+        {
+            value = 100;
+        }
+
+        Span<byte> request = [dialId, value];
+        return SendCommand(Commands.SetDialPercSingle, DataType.KeyValuePair, request);
+    }
+
+    public VUDialsStatus SetMultipleDialsPercent(IReadOnlyList<(byte DialId, byte Value)> values)
+    {
+        var count = values.Count;
+        var length = count * 2;
+        var rented = default(byte[]?);
+
+        var request = length <= StackPayloadThreshold
+            ? stackalloc byte[length]
+            : (rented = ArrayPool<byte>.Shared.Rent(length)).AsSpan(0, length);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                request[i * 2] = values[i].DialId;
+                request[(i * 2) + 1] = Math.Min(values[i].Value, (byte)100);
+            }
+
+            return SendCommand(Commands.SetDialPercMultiple, DataType.KeyValuePair, request);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+    }
+
+    //--------------------------------------------------------------------------------
+    // Raw value : Bypasses calibration and easing; range 0-2048.
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus SetDialRaw(byte dialId, ushort value)
+    {
+        Span<byte> request = [dialId, (byte)(value >> 8), (byte)(value & 0xFF)];
+        return SendCommand(Commands.SetDialRawSingle, DataType.KeyValuePair, request);
+    }
+
+    //--------------------------------------------------------------------------------
+    // Set Backlight : red/green/blue (0-100)
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus SetBacklight(byte dialId, byte red, byte green, byte blue, byte white)
+    {
+        Span<byte> request = [dialId, red, green, blue, white];
+        return SendCommand(Commands.SetRgbBacklight, DataType.MultipleValue, request);
+    }
+
+    //--------------------------------------------------------------------------------
+    // Calibrate
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus CalibrateDial(byte dialId, uint value, bool fullScale)
+    {
+        var command = fullScale ? Commands.SetDialCalibrateMax : Commands.SetDialCalibrateHalf;
+        return SendUInt32(command, DataType.KeyValuePair, dialId, value);
+    }
+
+    //--------------------------------------------------------------------------------
+    // Set Dial Easing
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus SetDialEasingStep(byte dialId, uint step) =>
+        SendUInt32(Commands.SetDialEasingStep, DataType.SingleValue, dialId, step);
+
+    public VUDialsStatus SetDialEasingPeriod(byte dialId, uint period) =>
+        SendUInt32(Commands.SetDialEasingPeriod, DataType.SingleValue, dialId, period);
+
+    //--------------------------------------------------------------------------------
+    // Set Backlight Easing
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus SetBacklightEasingStep(byte dialId, uint step) =>
+        SendUInt32(Commands.SetBacklightEasingStep, DataType.SingleValue, dialId, step);
+
+    public VUDialsStatus SetBacklightEasingPeriod(byte dialId, uint period) =>
+        SendUInt32(Commands.SetBacklightEasingPeriod, DataType.SingleValue, dialId, period);
+
+    //--------------------------------------------------------------------------------
+    // Get Easing Config
+    //--------------------------------------------------------------------------------
+
+    public EasingConfig? GetEasingConfig(byte dialId)
+    {
+        Span<byte> request = [dialId];
+        if (!RequestResponse(Commands.GetEasingConfig, DataType.SingleValue, request, out _, out var hexPayload))
+        {
+            return null;
+        }
+
+        // 4 x uint32 big-endian => 16 bytes => 32 hex chars.
+        if (hexPayload.Length < 32)
+        {
+            return null;
+        }
+
+        Span<byte> b = stackalloc byte[16];
+        if (HexHelper.ReadHex(hexPayload[..32], b) < 16)
+        {
+            return null;
+        }
+
+        return new EasingConfig(
+            BinaryPrimitives.ReadUInt32BigEndian(b),
+            BinaryPrimitives.ReadUInt32BigEndian(b[4..]),
+            BinaryPrimitives.ReadUInt32BigEndian(b[8..]),
+            BinaryPrimitives.ReadUInt32BigEndian(b[12..]));
+    }
+
+    //--------------------------------------------------------------------------------
+    // Admin API
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus ProvisionDevice() =>
+        SendCommand(Commands.ProvisionDevice, DataType.None, default);
+
+    public int ProvisionAndRescan(int maxRounds = 16)
+    {
+        var prev = -1;
+        for (var i = 0; i < maxRounds; i++)
+        {
+            if (!RequestResponse(Commands.ProvisionDevice, DataType.None, default, out _, out _))
+            {
+                return -1;
+            }
+
+            var online = CountOnline();
+            if (online < 0)
+            {
+                return -1;
+            }
+
+            if (online == prev)
+            {
+                break;
+            }
+            prev = online;
+        }
+
+        RequestResponse(Commands.RescanBus, DataType.None, default, out _, out _);
+
+        return CountOnline();
+
+        int CountOnline()
+        {
+            var map = GetDevicesMap();
+            if (map is null)
+            {
+                return -1;
+            }
+            var n = 0;
+            foreach (var b in map)
+            {
+                if (b == 0x01)
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+    }
+
+    public VUDialsStatus RescanBus() =>
+        SendCommand(Commands.RescanBus, DataType.None, default);
+
+    //--------------------------------------------------------------------------------
+    // Client specific
+    //--------------------------------------------------------------------------------
+
+    public VUDialsStatus SetDialPower(bool on)
+    {
+        Span<byte> request = [(byte)(on ? 1 : 0)];
+        return SendCommand(Commands.DialPower, DataType.SingleValue, request);
+    }
+
+    public VUDialsStatus ResetAllDevices() =>
+        SendCommand(Commands.ResetAllDevices, DataType.None, default);
+
+    public VUDialsStatus ResetConfig() =>
+        SendCommand(Commands.ResetCfg, DataType.None, default);
+
     public VUDialsStatus DisplayClear(byte dialId, bool whiteBackground)
     {
-        Span<byte> data = [dialId, (byte)(whiteBackground ? 1 : 0)];
-        return SendCommand(Commands.DisplayClear, DataType.KeyValuePair, data);
+        Span<byte> request = [dialId, (byte)(whiteBackground ? 1 : 0)];
+        return SendCommand(Commands.DisplayClear, DataType.KeyValuePair, request);
     }
 }

@@ -1,23 +1,10 @@
 using System.Globalization;
-using System.IO.Ports;
-using System.Text;
 
 using DeviceLib.VUDials;
-
-// VUDials 動作確認サンプル。
-// Usage: Example <COMポート> [dialId] [percent]
-// 注意: dial-id は 0 始まり。
-Console.OutputEncoding = Encoding.UTF8;
 
 if (args.Length < 1)
 {
     Console.WriteLine("Usage: Example <PORT> [dialId=0] [percent=50]");
-    Console.WriteLine("例: Example COM5 0 75\n");
-    Console.WriteLine("利用可能な COM ポート:");
-    foreach (var p in SerialPort.GetPortNames())
-    {
-        Console.WriteLine("  " + p);
-    }
     return 1;
 }
 
@@ -28,32 +15,32 @@ var percent = args.Length > 2 ? byte.Parse(args[2], CultureInfo.InvariantCulture
 using var client = new VUDialsClient(portName);
 client.Open();
 
-Console.WriteLine("\n=== 1) Provision + Rescan (全 dial を検出) ===");
+Console.WriteLine("==== 1) Provision + Rescan (detect all dials) ====");
 var n = client.ProvisionAndRescan();
-Console.WriteLine($"   → {n} 台検出");
+Console.WriteLine($"   -> {n} dial(s) detected");
 
-Console.WriteLine("\n=== 2) ダイヤル一覧 ===");
+Console.WriteLine("==== 2) Dial list ====");
 foreach (var d in client.ListDials())
 {
     Console.WriteLine($"  Dial #{d.Index}  UID={d.UidHex}");
 }
 
-Console.WriteLine($"\n=== 3) ダイヤル {dialId} を {percent}% に設定 ===");
+Console.WriteLine($"==== 3) Set dial {dialId} to {percent}% ====");
 var st = client.SetDialPercent(dialId, percent);
 if (st != VUDialsStatus.Ok)
 {
     Console.WriteLine($"FAIL: status={st}");
     return 2;
 }
-Console.WriteLine("   → OK");
+Console.WriteLine("   -> OK");
 
-Console.WriteLine("\n=== 4) デバイス情報取得 ===");
+Console.WriteLine("==== 4) Get device info ====");
 Console.WriteLine($"  UID      : {client.GetDeviceUid(dialId) ?? "(none)"}");
 Console.WriteLine($"  Firmware : {client.GetFirmwareVersion(dialId) ?? "(none)"}");
 Console.WriteLine($"  Hardware : {client.GetHardwareVersion(dialId) ?? "(none)"}");
 Console.WriteLine($"  Protocol : {client.GetProtocolVersion(dialId) ?? "(none)"}");
 
-Console.WriteLine("\n=== 5) イージング設定取得 ===");
+Console.WriteLine("==== 5) Get easing config ====");
 var easing = client.GetEasingConfig(dialId);
 if (easing is not null)
 {
@@ -63,7 +50,7 @@ if (easing is not null)
     Console.WriteLine($"  BacklightPeriod : {easing.BacklightPeriod}");
 }
 
-Console.WriteLine("\n=== 6) スイープ (0→100→0) ===");
+Console.WriteLine("==== 6) Sweep (0->100->0) ====");
 for (var v = 0; v <= 100; v += 10)
 {
     client.SetDialPercent(dialId, (byte)v);
@@ -75,10 +62,10 @@ for (var v = 100; v >= 0; v -= 10)
     Thread.Sleep(150);
 }
 
-Console.WriteLine("\n=== 7) バックライト: レッド → オフ ===");
+Console.WriteLine("==== 7) Backlight: red -> off ====");
 client.SetBacklight(dialId, 100, 0, 0, 0);
 Thread.Sleep(1000);
 client.SetBacklight(dialId, 0, 0, 0, 0);
 
-Console.WriteLine("\n[Done]");
+Console.WriteLine("[Done]");
 return 0;
