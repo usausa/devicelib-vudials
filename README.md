@@ -30,7 +30,7 @@ if (status != VUDialsStatus.Ok)
 }
 
 // Set RGBW backlight (values 0-100)
-client.SetBacklight(0, r: 100, g: 0, b: 0, w: 0);
+client.SetBacklight(0, red: 100, green: 0, blue: 0, white: 0);
 ```
 
 ## Global tool
@@ -45,36 +45,35 @@ client.SetBacklight(0, r: 100, g: 0, b: 0, w: 0);
 
 | Command | Description |
 |:-|:-|
-| `list-ports` | List available serial ports |
+| `port` | List available serial ports |
+| `dials` | List connected dials |
+| `info` | Get device information for a dial |
+| `percent` | Set dial position by percentage (0-100) |
+| `multi` | Set multiple dials at once |
+| `raw` | Set dial position by raw value (0-65535) |
+| `backlight` | Set RGBW backlight |
+| `calibrate` | Calibrate dial |
+| `easing` | Show easing config, or set only the options you pass |
 | `provision` | Provision and rescan all dials |
 | `rescan` | Rescan I2C bus |
-| `list-dials` | List connected dials |
-| `set-percent` | Set dial position by percentage (0-100) |
-| `set-raw` | Set dial position by raw value (0-65535) |
-| `set-multiple` | Set multiple dials at once |
-| `set-backlight` | Set RGBW backlight |
-| `get-easing` | Get easing configuration |
-| `set-dial-easing-step` | Set dial easing step |
-| `set-dial-easing-period` | Set dial easing period (ms) |
-| `set-backlight-easing-step` | Set backlight easing step |
-| `set-backlight-easing-period` | Set backlight easing period (ms) |
-| `device-info` | Get device information |
 | `power` | Turn dial power on or off |
-| `reset-devices` | Reset all devices |
-| `reset-config` | Reset configuration to defaults |
-| `calibrate` | Calibrate dial |
-| `display-clear` | Clear the display of a dial |
-| `sweep` | Run a 0→100→0 sweep test pattern |
+| `reset` | Reset devices and/or configuration |
+| `clear` | Clear the display of a dial |
+| `sweep` | Run a 0->100->0 sweep test pattern |
 
 ### Usage
 
 ```
 vud provision -p COM5
-vud list-dials -p COM5
-vud set-percent -p COM5 -d 0 -val 75
-vud set-raw -p COM5 -d 0 -val 32768
-vud set-multiple -p COM5 -val 0=50,1=75,2=20
-vud set-backlight -p COM5 -d 0 --r 0 --g 100 --b 0 --w 0
+vud dials -p COM5
+vud info -p COM5 -d 0
+vud percent -p COM5 -d 0 -val 75
+vud raw -p COM5 -d 0 -val 32768
+vud multi -p COM5 -val 0=50,1=75,2=20
+vud backlight -p COM5 -d 0 --r 0 --g 100 --b 0 --w 0
+vud easing -p COM5 -d 0
+vud easing -p COM5 -d 0 --dial-step 5 --backlight-period 40
+vud reset -p COM5 --config
 vud power -p COM5 --on
 vud sweep -p COM5 -d 0
 ```
