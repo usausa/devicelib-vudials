@@ -22,11 +22,15 @@ foreach (var dial in client.ListDials())
     Console.WriteLine($"Dial #{dial.Index} UID={dial.UidHex}");
 }
 
-// Set dial position by percentage (0-100)
-client.SetDialPercent(0, 75, out var status);
+// Set dial position by percentage (0-100). Returns VUDialsStatus (Ok == success).
+var status = client.SetDialPercent(0, 75);
+if (status != VUDialsStatus.Ok)
+{
+    Console.WriteLine($"Failed: {status}");
+}
 
 // Set RGBW backlight (values 0-100)
-client.SetBacklight(0, r: 100, g: 0, b: 0, w: 0, out status);
+client.SetBacklight(0, r: 100, g: 0, b: 0, w: 0);
 ```
 
 ## Global tool

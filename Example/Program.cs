@@ -39,7 +39,8 @@ foreach (var d in client.ListDials())
 }
 
 Console.WriteLine($"\n=== 3) ダイヤル {dialId} を {percent}% に設定 ===");
-if (!client.SetDialPercent(dialId, percent, out var st))
+var st = client.SetDialPercent(dialId, percent);
+if (st != VUDialsStatus.Ok)
 {
     Console.WriteLine($"FAIL: status={st}");
     return 2;
@@ -65,19 +66,19 @@ if (easing is not null)
 Console.WriteLine("\n=== 6) スイープ (0→100→0) ===");
 for (var v = 0; v <= 100; v += 10)
 {
-    client.SetDialPercent(dialId, (byte)v, out _);
+    client.SetDialPercent(dialId, (byte)v);
     Thread.Sleep(150);
 }
 for (var v = 100; v >= 0; v -= 10)
 {
-    client.SetDialPercent(dialId, (byte)v, out _);
+    client.SetDialPercent(dialId, (byte)v);
     Thread.Sleep(150);
 }
 
 Console.WriteLine("\n=== 7) バックライト: レッド → オフ ===");
-client.SetBacklight(dialId, 100, 0, 0, 0, out _);
+client.SetBacklight(dialId, 100, 0, 0, 0);
 Thread.Sleep(1000);
-client.SetBacklight(dialId, 0, 0, 0, 0, out _);
+client.SetBacklight(dialId, 0, 0, 0, 0);
 
 Console.WriteLine("\n[Done]");
 return 0;

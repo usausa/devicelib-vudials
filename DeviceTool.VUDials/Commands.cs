@@ -116,8 +116,8 @@ public sealed class RescanCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.RescanBus(out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.RescanBus();
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -172,8 +172,8 @@ public sealed class SetPercentCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetDialPercent(DialId, Value, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetDialPercent(DialId, Value);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -197,8 +197,8 @@ public sealed class SetRawCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetDialRaw(DialId, Value, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetDialRaw(DialId, Value);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -233,8 +233,8 @@ public sealed class SetMultipleCommand : ICommandHandler
             return;
         }
         using var client = PortHelper.Open(Port);
-        var ok = client.SetMultipleDialsPercent(pairs, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetMultipleDialsPercent(pairs);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
     }
 }
 
@@ -266,8 +266,8 @@ public sealed class SetBacklightCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetBacklight(DialId, R, G, B, W, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetBacklight(DialId, R, G, B, W);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -322,8 +322,8 @@ public sealed class SetDialEasingStepCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetDialEasingStep(DialId, Value, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetDialEasingStep(DialId, Value);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -347,8 +347,8 @@ public sealed class SetDialEasingPeriodCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetDialEasingPeriod(DialId, Value, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetDialEasingPeriod(DialId, Value);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -372,8 +372,8 @@ public sealed class SetBacklightEasingStepCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetBacklightEasingStep(DialId, Value, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetBacklightEasingStep(DialId, Value);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -397,8 +397,8 @@ public sealed class SetBacklightEasingPeriodCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetBacklightEasingPeriod(DialId, Value, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetBacklightEasingPeriod(DialId, Value);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -444,8 +444,8 @@ public sealed class PowerCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.SetDialPower(On, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.SetDialPower(On);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -463,8 +463,8 @@ public sealed class ResetDevicesCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.ResetAllDevices(out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.ResetAllDevices();
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -482,8 +482,8 @@ public sealed class ResetConfigCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.ResetConfig(out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.ResetConfig();
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -510,8 +510,8 @@ public sealed class CalibrateCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.CalibrateDial(DialId, Value, Full, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.CalibrateDial(DialId, Value, Full);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -535,8 +535,8 @@ public sealed class DisplayClearCommand : ICommandHandler
     public ValueTask ExecuteAsync(CommandContext context)
     {
         using var client = PortHelper.Open(Port);
-        var ok = client.DisplayClear(DialId, White, out var status);
-        Console.WriteLine(ok ? "OK" : $"Failed: {status}");
+        var status = client.DisplayClear(DialId, White);
+        Console.WriteLine(status == VUDialsStatus.Ok ? "OK" : $"Failed: {status}");
         return ValueTask.CompletedTask;
     }
 }
@@ -567,13 +567,13 @@ public sealed class SweepCommand : ICommandHandler
         {
             for (var v = 0; v <= 100; v += 5)
             {
-                client.SetDialPercent(DialId, (byte)v, out _);
+                client.SetDialPercent(DialId, (byte)v);
                 Console.Write($"\r{v,3}%");
                 await Task.Delay(Delay);
             }
             for (var v = 100; v >= 0; v -= 5)
             {
-                client.SetDialPercent(DialId, (byte)v, out _);
+                client.SetDialPercent(DialId, (byte)v);
                 Console.Write($"\r{v,3}%");
                 await Task.Delay(Delay);
             }
