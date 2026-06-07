@@ -624,7 +624,8 @@ public sealed class VUDialsClient : IDisposable
 
     public VUDialsStatus DisplayClear(byte dialId, bool whiteBackground)
     {
-        Span<byte> request = [dialId, (byte)(whiteBackground ? 1 : 0)];
-        return SendCommand(Commands.DisplayClear, DataType.KeyValuePair, request);
+        // VU-Server dial_display_clear: SingleValue type; flag 0 = white background, 1 = black.
+        Span<byte> request = [dialId, (byte)(whiteBackground ? 0 : 1)];
+        return SendCommand(Commands.DisplayClear, DataType.SingleValue, request);
     }
 }
