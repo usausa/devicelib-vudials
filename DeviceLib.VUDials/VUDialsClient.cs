@@ -241,9 +241,15 @@ public sealed class VUDialsClient : IDisposable
             var line = readBuffer.AsSpan(0, length);
             if (line[0] != (byte)'<')
             {
+                break;
+            }
+
+            if (length < 9)
+            {
                 continue;
             }
-            if (length < 9)
+
+            if (HexHelper.ParseHexByte(line.Slice(1, 2)) != command)
             {
                 break;
             }
@@ -339,14 +345,28 @@ public sealed class VUDialsClient : IDisposable
             return VUDialsStatus.Ok;
         }
 
-        Span<byte> raw = stackalloc byte[hexPayload.Length / 2];
-        var count = HexHelper.ReadHex(hexPayload, raw);
-        var value = 0;
-        for (var i = 0; i < count; i++)
+        var rawLength = hexPayload.Length / 2;
+        var rentedRaw = default(byte[]?);
+        var raw = rawLength <= StackPayloadThreshold
+            ? stackalloc byte[rawLength]
+            : (rentedRaw = ArrayPool<byte>.Shared.Rent(rawLength)).AsSpan(0, rawLength);
+        try
         {
-            value = (value << 8) | raw[i];
+            var count = HexHelper.ReadHex(hexPayload, raw);
+            var value = 0;
+            for (var i = 0; i < count; i++)
+            {
+                value = (value << 8) | raw[i];
+            }
+            return (VUDialsStatus)value;
         }
-        return (VUDialsStatus)value;
+        finally
+        {
+            if (rentedRaw is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rentedRaw);
+            }
+        }
     }
 
     private VUDialsStatus SendUInt32(byte cmd, DataType dataType, byte dialId, uint value)
@@ -364,7 +384,28 @@ public sealed class VUDialsClient : IDisposable
         {
             return null;
         }
-        return hexPayload.IsEmpty ? string.Empty : Encoding.ASCII.GetString(hexPayload);
+        if (hexPayload.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        var rawLength = hexPayload.Length / 2;
+        var rentedRaw = default(byte[]?);
+        var raw = rawLength <= StackPayloadThreshold
+            ? stackalloc byte[rawLength]
+            : (rentedRaw = ArrayPool<byte>.Shared.Rent(rawLength)).AsSpan(0, rawLength);
+        try
+        {
+            var count = HexHelper.ReadHex(hexPayload, raw);
+            return Encoding.ASCII.GetString(raw[..count]);
+        }
+        finally
+        {
+            if (rentedRaw is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rentedRaw);
+            }
+        }
     }
 
     //--------------------------------------------------------------------------------
@@ -485,7 +526,7 @@ public sealed class VUDialsClient : IDisposable
 
     public VUDialsStatus SetBacklight(byte dialId, byte red, byte green, byte blue, byte white)
     {
-        Span<byte> request = [dialId, red, green, blue, white];
+        Span<byte> request = [dialId, Math.Min(red, (byte)100), Math.Min(green, (byte)100), Math.Min(blue, (byte)100), Math.Min(white, (byte)100)];
         return SendCommand(Commands.SetRgbBacklight, DataType.MultipleValue, request);
     }
 
