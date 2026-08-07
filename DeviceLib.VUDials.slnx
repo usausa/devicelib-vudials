@@ -13,7 +13,7 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/Example/">
-    <Project Path="Example/Example.csproj" />
+    <Project Path="Example/Example.csproj" DefaultStartup="true" />
   </Folder>
   <Folder Name="/Library/">
     <Project Path="DeviceLib.VUDials/DeviceLib.VUDials.csproj" />
