@@ -249,7 +249,7 @@ public sealed class EasingCommand : ICommandHandler
     {
         using var client = PortHelper.Open(Port);
 
-        if (DialStep is null && DialPeriod is null && BacklightStep is null && BacklightPeriod is null)
+        if ((DialStep is null) && (DialPeriod is null) && (BacklightStep is null) && (BacklightPeriod is null))
         {
             var config = client.GetEasingConfig(DialId);
             if (config is null)

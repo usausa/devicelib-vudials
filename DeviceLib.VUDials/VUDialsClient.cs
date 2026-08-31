@@ -283,7 +283,7 @@ public sealed class VUDialsClient : IDisposable
             }
             if (value == '\n')
             {
-                if (offset > 0 && readBuffer[offset - 1] == (byte)'\r')
+                if ((offset > 0) && (readBuffer[offset - 1] == (byte)'\r'))
                 {
                     offset--;
                 }
@@ -340,7 +340,7 @@ public sealed class VUDialsClient : IDisposable
             return VUDialsStatus.Timeout;
         }
 
-        if (responseType != DataType.StatusCode || hexPayload.IsEmpty)
+        if ((responseType != DataType.StatusCode) || hexPayload.IsEmpty)
         {
             return VUDialsStatus.Ok;
         }
