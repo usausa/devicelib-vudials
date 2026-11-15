@@ -17,8 +17,8 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="3.0.0" />
-    <PackageReference Include="System.IO.Ports" Version="10.0.11" />
-    <PackageReference Include="Usa.Smart.CommandLine.Hosting" Version="2.20.0" />
+    <PackageReference Include="System.IO.Ports" Version="11.0.0" />
+    <PackageReference Include="Usa.Smart.CommandLine.Hosting" Version="3.0.0" />
   </ItemGroup>
 
   <ItemGroup>
